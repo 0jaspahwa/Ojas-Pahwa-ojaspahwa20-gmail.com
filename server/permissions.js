@@ -122,10 +122,10 @@ function decide(permission, { role, baseline, grants, deviceId, nowMs, orgMode =
   }
 
   if (baseline.has(permission)) {
-    if (trace) trace.push({ step: 'baseline', result: `role ${role} contains ${permission}` });
+    if (trace) trace.push({ step: 'baseline', role, contains: true });
     return allow(`role:${role}`);
   }
-  if (trace) trace.push({ step: 'baseline', result: `role ${role} does not contain ${permission}` });
+  if (trace) trace.push({ step: 'baseline', role, contains: false });
 
   if (allows.length) {
     if (trace) trace.push({ step: 'allow_grant', grant: allows[0].id });

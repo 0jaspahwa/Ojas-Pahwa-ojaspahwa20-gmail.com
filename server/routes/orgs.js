@@ -1,11 +1,11 @@
-// Orgs, members, and effective permissions.
+// Orgs, members, effective permissions, and the "why?" inspector.
 //
 // Every member change runs in an IMMEDIATE transaction: it takes the write lock first,
 // so a racing request waits, then re-counts and gets a clean 409 LAST_OWNER. Without it,
 // WAL snapshot isolation still stops a double win, but the loser fails with
 // SQLITE_BUSY_SNAPSHOT, a 500 (measured: scripts/probe-members.js).
 
-import { resolve, assertCan } from '../permissions.js';
+import { resolve, explain, assertCan } from '../permissions.js';
 import { audit, auditDenials } from '../audit.js';
 import {
   assertRoleExists, assertCanModify, assertCanAssign, assertNotLastOwner, endActiveSessions,
@@ -204,16 +204,34 @@ export function registerOrgRoutes(router, { db }) {
 
   // --- effective permissions ----------------------------------------------------------
 
-  // user:read, or yourself. ?deviceId= asks the device-level question.
-  router.get('/v1/orgs/:org/users/:userId/effective', (ctx, p, res) => {
-    const meta = { action: 'member.effective', targetType: 'user', targetId: p.userId };
+  // The gate for both routes below: user:read, or yourself. The user must be a member
+  // here and the device (optional) must be in this org, else 404. Returns deviceId.
+  function askAbout(ctx, p, action) {
+    const meta = { action, targetType: 'user', targetId: p.userId };
     if (p.userId !== ctx.userId) auditDenials(db, ctx, meta, () => assertCan(db, ctx, 'user:read'));
     if (!memberOf.get(ctx.orgId, p.userId)) throw notFound();
-    const deviceId = ctx.query.get('deviceId');
+    const deviceId = ctx.query.get('deviceId') || null;
     if (deviceId !== null && !db.prepare('SELECT 1 FROM devices WHERE id = ? AND org_id = ? AND deleted_at IS NULL').get(deviceId, ctx.orgId)) {
       throw notFound();
     }
+    return deviceId;
+  }
+
+  // ?deviceId= asks the device-level question.
+  router.get('/v1/orgs/:org/users/:userId/effective', (ctx, p, res) => {
+    const deviceId = askAbout(ctx, p, 'member.effective');
     const { role, permissions } = resolve(db, { userId: p.userId, orgId: ctx.orgId, deviceId });
     send(res, 200, { userId: p.userId, deviceId, role, permissions });
+  });
+
+  // The "why?" inspector: the same decide() as every other check, with its trace on.
+  // Only this route builds a trace.
+  router.get('/v1/orgs/:org/users/:userId/explain', (ctx, p, res) => {
+    const deviceId = askAbout(ctx, p, 'member.explain');
+    const permission = ctx.query.get('permission');
+    if (!permission || !db.prepare('SELECT 1 FROM permissions WHERE key = ?').get(permission)) {
+      throw badRequest('permission must be one of the catalogue', 'unknown_permission');
+    }
+    send(res, 200, explain(db, { userId: p.userId, orgId: ctx.orgId, permission, deviceId }));
   });
 }
