@@ -1,5 +1,19 @@
 # BUILD-LOG
 
+Entries are in the order the work happened. I built out of the phase order (devices, grants
+and sessions before members), so Phases 3-6 point to where their entries are.
+
+**Where to find each kind of entry**
+
+| Kind | Entry |
+|---|---|
+| A wrong prediction | Phase 2 · context.js ("my probe assumed owner has every permission"); Phase 2 · sessions ("Sam asked for terminal and got 403, not 409"); Phase 3 · "what IMMEDIATE actually buys (I had it wrong)" |
+| A reversed decision | Phase 2 · engine ("hold it at that scope" = any device, then any + every); Phase 8 · invite accept (password required, then attach without one) |
+| A doc gap I settled | Phase 2 · login ("no document says which org a login lands in"); Phase 2 · "devices, grants, refresh: things no document settles" |
+| A DB guarantee I leaned on | Phase 2 · sessions (unique index dropped: 201 + 201 every round); Phase 2 · results (`device:teleport` rejected by the FK, transaction rolled back) |
+| A bug in my own code | Phase 0 · "my own fix broke the server"; Phase 2 · sessions (TTL 60.0000167 min, two clocks); Phase 3 · members (a refusal audited twice) |
+| Something measured | Phase 2 · login (1.9 ms vs 49.0 ms without dummy scrypt); Phase 2 · results (10 queries at 4 and 104 rows, 26/426 with N+1); Phase 7 · inspector (900/900, 35/900 broken) |
+
 ## Phase 0 - orientation
 
 ### 2026-09-26 · db:load failed on Windows
@@ -184,21 +198,29 @@ data stayed right (one user, one owner every round), but one accept round in fiv
 `500 SQLITE_BUSY_SNAPSHOT`. WAL already refuses the loser. IMMEDIATE makes the loser wait
 and get a clean 409. Fixed my code comments, which claimed the wrong thing.
 
-## Phase 3 - orgs, members, invites
-
-<!-- Anything no document states. Invite lifecycle states. -->
-
 ## Phase 4 - devices and grants
 
-<!-- Two grants disagree, or grant scope and question scope differ. Predicted vs got. -->
+Built before members. Entries are under Phase 2: "predictions before devices, grants,
+refresh", "results: all three held", and "devices, grants, refresh: things no document settles".
 
 ## Phase 5 - sessions
 
-<!-- Two permissions, one device. What order keeps the two failure reasons distinct? -->
+Built before members. Entry under Phase 2: "sessions and the audit list". The two failure
+reasons stay apart because `assertCanStartSession` checks `session:start` first, then the mode
+permission, on one resolved set.
 
 ## Phase 6 - audit
 
-<!-- What counts as an auditable event, and why. -->
+### 2026-09-27 · what counts as an auditable event (written up at the end)
+
+Decided when I wrote `audit.js` (`d513042`); written here at the end, so it is a summary.
+- Every write that succeeds: one row, inside the same transaction as the change.
+- Every 403: one deny row with the reason, via `auditDenials`. Probe: "one refusal writes
+  one deny row" (it was two, see Phase 3).
+- A `GET` on a device you cannot view: 404 to you, but a deny row (`not_visible`), because
+  that is someone probing ids.
+- Not audited: successful reads, logins, other 404s. Reads would drown the denials, and a
+  404 on an unknown id says nothing about who tried what.
 
 ## Phase 7 - the console
 
@@ -250,6 +272,39 @@ deletes the files, so the script is now just `node scripts/load-db.js`.
 ## Phase 8 - hardening
 
 <!-- What you measured, what you fixed, what you left alone and why. -->
+
+### 2026-09-27 · invite accept for an existing account: reversed
+
+Had: an existing account must give its password, else 401 (`409b2f4`). Too strict: the
+person owns the email and may only want the membership. Now: no password attaches the
+membership, 200, no token, no cookie. Right password also signs in. Wrong password: 401,
+nothing attached. The token alone still never signs anyone in. 3 new probe lines, 39/39.
+Also renamed the My access test id to `my-access`: it was `nav-me`, which made a seventh
+`nav-*` card for an owner. New test: an owner has exactly six.
+
+### 2026-09-27 · what I measured, fixed, and left alone
+
+Probes, beyond the shipped suites (all green at the end):
+- `probe-engine` 15, `probe-context` 23, `probe-auth` 21, `probe-routes` 48,
+  `probe-sessions` 31, `probe-members` 39, `probe-explain` 900.
+- Six were checked by breaking the code on purpose: engine bugs put back (`probe-engine`,
+  3 FAILs), dummy scrypt removed (`probe-auth`, ratio FAIL), N+1 (`probe-routes`, 26/426
+  queries), unique index dropped (`probe-sessions`, 201 + 201 every round), IMMEDIATE removed
+  (`probe-members`, a 500 in 1 of 5 rounds), explain skipping denies (`probe-explain`, 35 of
+  900 wrong). `probe-context` was not broken on purpose.
+
+Races, with two server processes on one database file:
+- parallel control starts: one 201, one 409, 10 of 10 rounds. The index is the only lock.
+- parallel invite accepts: one 200, one 409, 5 of 5.
+- two owners demoting each other: one wins, one owner left, 5 of 5.
+- IMMEDIATE does not protect the data (WAL already does); it gives the loser a 409, not a 500.
+
+Measured: login 1.9 ms vs 49.0 ms without the dummy scrypt, 56.4 vs 56.8 ms with it.
+`GET /devices` 10 queries at 4 rows and at 104. Dev server: 8 restarts in 6 s on Node 20
+with `--watch`, 0 without.
+
+Left alone, on purpose: see "Deliberately not built" in DECISIONS.md and the open threads
+below. The biggest is the two-tab refresh race.
 
 ## Open threads
 

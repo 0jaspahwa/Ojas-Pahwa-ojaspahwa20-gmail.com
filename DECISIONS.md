@@ -21,7 +21,7 @@ into a path on every OS.
 `verifyAccessToken`, `server/auth.js`.
 **Why:** in node, `timingSafeEqual` on 32 vs 6 bytes threw
 `RangeError ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH`. Without the check, `signature truncated`
-in `check-jwt.js` becomes a 500, not a 401. BUILD-LOG, Phase 1.
+in `check-jwt.js` becomes a 500, not a 401. BUILD-LOG, Phase 1. Commit `0c50d3a`.
 **What I rejected:** comparing the signatures as strings with `===`. It never throws, but it
 stops at the first different character, so response time leaks how much of the signature is
 right.
@@ -35,7 +35,7 @@ right.
 **What I chose:** `header.alg !== 'HS256' || header.typ !== 'JWT'` rejects. The algorithm is
 never read from the header. HMAC-SHA256 is always used.
 **Why:** `check-jwt.js` rejects `none`, `HS512`, `RS256`, a missing `alg` and a missing `typ`.
-Only an exact match covers all five, including ones not in the test.
+Only an exact match covers all five, including ones not in the test. Commit `0c50d3a`.
 **What I rejected:** banning `alg: none` only. That passes the three `none` cases but accepts
 `HS512`, `RS256` and a missing `alg`.
 **What would change my mind:** needing a second algorithm, e.g. RS256 for other services.
@@ -70,7 +70,7 @@ grant (device denies count, device allows do not).
 **Why:** `scripts/probe-engine.js`. With `'any'` everywhere, a viewer holding `device:control`
 on one device granted it org-wide: `allowed`, want `refused 403`. With `'every'` everywhere,
 4 nav checks fail, including Robin's `device:reboot` at org level.
-The shipped suites pass either way, so they could not settle this.
+The shipped suites pass either way, so they could not settle this. Commit `57b3cb9`.
 **What I rejected:** one org-level meaning. Each single choice fails one side of the probe.
 **What would change my mind:** a test that expects an org-wide grant to be allowed from a
 one-device allow. I think it would be laundering, but I would follow the test and argue it here.
@@ -82,7 +82,7 @@ one-device allow. I think it would be laundering, but I would follow the test an
 **What I chose:** `windowState` compares `Date.parse(...)` against `now.getTime()`.
 **Why:** a grant with `expires_at = '2030-01-01T09:00:00Z'` was still `allow` at
 `09:00:00.000Z`, because `.` sorts before `Z`. That breaks D7. Probe:
-`at expiry, written without ms`.
+`at expiry, written without ms`. Commit `57b3cb9`.
 **What I rejected:** keeping string compare and normalising timestamps on write. It only holds
 if every writer normalises: the seed, every route, and any test fixture that inserts rows
 directly. One miss brings the bug back, silently.
@@ -97,6 +97,7 @@ normalise on write and add a `CHECK` on the format, so the database enforces it.
 Same order is used for the `orgs` list in the login, switch and `/auth/me` responses.
 **Why:** no document says. Dana and Sam both joined Acme first, and `check-api.js`
 (`dana is owner in Acme`) and `tests/ui.spec.js` (`sam ... operator in Acme`) expect Acme.
+Commit `223e811`; probe `no orgId: earliest joined (Acme, owner)` in `probe-auth.js`.
 **What I rejected:** alphabetical by org name. It passes the same tests (Acme < Globex) but
 depends on names, which admins can rename, so the default org could change under a user.
 Also "most recently used": it needs state the schema does not store.
@@ -105,11 +106,56 @@ another by name, and expects the other one.
 
 ---
 
+### A device you cannot `device:view` is a 404, also on its own endpoint
+
+**What I chose:** `visibleDevice` in `server/routes/devices.js`: missing, deleted, other org, or
+no `device:view` are all `404` with the same body. The attempt is still audited (`not_visible`).
+**Why:** the list already hides the row (`kiosk-lobby-01 is ABSENT` in `check-api.js`). A 403 on
+`GET /devices/:id` would confirm the id exists. Probe `...same body as a device that does not
+exist` in `probe-routes.js`. Commit `7cf396c`.
+**What I rejected:** 403, the PERMISSIONS §5 default for "visible but not permitted". It fits
+other permissions, but `device:view` *is* the visibility permission.
+**What would change my mind:** a test that expects 403 there. The list and the endpoint would
+then disagree about whether the device exists, and I would argue it here.
+
+---
+
+### Member changes run in IMMEDIATE transactions, for the error code, not the data
+
+**What I chose:** `.immediate()` on role change, suspend, reinstate, remove, leave and accept.
+**Why:** measured with two server processes (`probe-members.js`). With IMMEDIATE: every round
+one winner and a clean 409. Without it, the data was still right (WAL rejects the loser), but
+1 accept round in 5 returned `500 SQLITE_BUSY_SNAPSHOT`. Commits `409b2f4`, `101ffbb`.
+**What I rejected:** a plain transaction. I believed it allowed a double win; the experiment
+showed it only gives the loser the wrong status. My first code comment said the wrong thing.
+**What would change my mind:** running more than one writer against a server database (not
+SQLite). Then this becomes a row lock or a serializable transaction.
+
+---
+
+### Accepting an invite for an existing account attaches it; only a password signs in
+
+**What I chose:** existing account, no password: membership attached, `200`, no token, no
+cookie. Right password: attached and signed in. Wrong password: `401`, nothing attached.
+**Why:** probe lines `existing user, no password -> 200, attached` and `...but not signed in:
+no token, no cookie` in `probe-members.js`. Commit `951c9ce`.
+**What I rejected:** my first version (`409b2f4`): password required, else 401. Safe, but it
+blocked a person who owns the email and only wants the membership. Also rejected: issuing
+tokens on the token alone. A forwarded invite link would then sign someone in to another
+person's account.
+**What would change my mind:** invites sent to addresses the org does not control. Then attach
+should need the password too.
+
+---
+
 ## Tools used
 
-- Claude drafted `verifyAccessToken` and the permission engine. Claude's review found the
-  3 engine bugs with `scripts/probe-engine.js` and fixed them. I read every change and
-  can explain each line.
+- Built with Claude (Anthropic), in pairing sessions: Claude wrote the code, the probes and
+  drafts of these notes to my step-by-step specs. Every line was reviewed, probed and
+  understood by me before it was committed. Claude's probes found the 3 engine bugs
+  (`probe-engine.js`) and the TTL clock bug (`probe-sessions.js`).
+- Libraries: only those the starter ships (`better-sqlite3`, React, Vite, Playwright). No code
+  was copied from any other repository, blog post or solution.
 
 ---
 
@@ -183,6 +229,25 @@ server processes.
 co-owner could never be demoted, and the last-owner rule already guards the danger.
 `assertCanModify` in `server/lifecycle.js`. Probe: `admin -> admin (equal, not top) -> 403`.
 
+### "`device:*` collapses to the seven device permissions; `*` to all nineteen"
+
+- PERMISSIONS §4 (and §2: "five rows", "the nineteen permissions").
+- The database: 6 roles and 20 permissions, 8 of them `device:`. The personalised overlay adds
+  `reviewer` and `device:reboot` (README: "the prose ... is not the model: the database is").
+
+**Built against:** the database. `patternMatches` in `server/permissions.js` matches `device:*` by
+prefix against the `permissions` table, so it covers `device:reboot` too. No count is written
+anywhere. Evidence: `probe-explain.js` runs over 20 permissions, 900/900.
+
+### "Plain string comparison works" for timestamps, until two writers disagree on format
+
+- `server/db.js`: "lexicographic order == chronological order and plain string comparison works".
+- `server/http.js` `normalizeTs`: '+' sorts before 'Z', so '...+00:00' is "silently mis-ordered".
+  The same happens with '...:00Z' vs '...:00.000Z' ('.' sorts before 'Z').
+
+**Built against:** instants. `windowState` compares `Date.parse` numbers. Probe
+`at expiry, written without ms` in `probe-engine.js`. See the decision above.
+
 ### Invite tokens: `sha256(token)` or HMAC?
 
 - AUTH-DATA-MODEL §6: "stores `sha256(token)`".
@@ -193,4 +258,18 @@ reads the database. Probe: `token stored hashed`.
 
 ## Deliberately not built
 
-<!-- What you chose not to build, and why. -->
+- **File transfer.** `transfer-files` is present per permission, but only shows a notice: there
+  is no device agent to move files to. Out of scope for a permission console.
+- **Email.** No invite is emailed; the raw token comes back once in the `POST /invites`
+  response and the console shows the link. BRIEF lists email delivery as not here.
+- **Pagination and search** on lists. Only `GET /audit` pages (`limit`/`offset`, strict). The
+  fixture is small; sessions cap at 500 rows.
+- **Rate limiting.** BRIEF lists it as not here. Login does pay a full scrypt either way.
+- **Two-tab refresh race.** Two tabs refreshing at once: the second looks like a replay and
+  signs the user out. Fix would be a short grace window for the just-rotated token.
+- **Transfer is audited in the old org only.** One action, one row. The new org's log does not
+  show the device arriving.
+- **`GET /grants` shows device ids** for devices the reader cannot view. The console never
+  names them, but the API returns the id.
+- **`device:provision` on one device lets you create devices** (`POST /devices` checks the
+  org-level union). Should use `'every'`, like org-wide grants.
