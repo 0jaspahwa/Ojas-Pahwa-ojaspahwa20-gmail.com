@@ -47,6 +47,16 @@ Two things I noticed:
 <!-- What did you expect each failure mode to look like before you ran it? Which one behaved
 differently, and what did that tell you? -->
 
+### 2026-09-27 · predictions, before writing any code
+
+1. `timingSafeEqual` throws `RangeError` when the buffers differ in length. A truncated
+   signature would then be a 500, not a 401. I need a length check first.
+2. `Buffer.from('!!!', 'base64url')` does not throw. It skips bad characters. So a garbage
+   signature is caught by the length or compare check, not by decoding.
+3. A header of `null` parses fine as JSON. `header.alg` would then throw `TypeError` (500).
+   I need an "is it an object" check.
+4. Order: check the signature before parsing the payload. Then nothing unsigned gets parsed.
+
 ## Phase 2 - caller context and the resolution engine
 
 <!-- The model you started with, the observation that broke it, the model you moved to. -->
