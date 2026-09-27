@@ -73,6 +73,35 @@ also give 401, not 500.
 
 <!-- The model you started with, the observation that broke it, the model you moved to. -->
 
+### 2026-09-27 · engine passes the suites, probes find 3 bugs
+
+Engine done (`server/permissions.js`, commit `57b3cb9`).
+`check-permissions.js` 35/35, `check-personalisation.js` 18/18, on the first draft already.
+
+The suites passed, but `scripts/probe-engine.js` found 3 bugs they do not cover:
+
+1. The draft read "hold it at that scope" as "on any device", and I accepted that. Wrong:
+   a viewer with `grant:create` and `device:control` on one device could grant
+   `device:control` org-wide. Now an org-wide grant needs the permission on every device
+   (`orgMode 'every'`). Nav still uses `'any'`.
+2. A device moved to another org kept its old grants. Its allow still showed in the old
+   org's nav. Added `d.org_id = g.org_id` in `loadGrants`.
+3. I compared ISO times as text. `'09:00:00Z'` vs `'09:00:00.000Z'`: `.` sorts before `Z`,
+   so a grant stayed alive at its expiry. `windowState` now compares `Date.parse` numbers.
+
+Checked the probe catches them: with bugs 1 and 2 put back, it reports 3 FAILs.
+
+### 2026-09-27 · the union is not tested by the suites
+
+Org-level: device-scoped allows count, device-scoped denies do not.
+Robin (reviewer, Ironside) gets `device:reboot` at org level: `allow` from
+`grt_p_bb3398_allow`. On `dev_p_bb3398_b` it is `explicit_deny`.
+I made no prediction about this earlier; Phase 0 only noted the two grants.
+
+Flipped nav to `'every'` to see what breaks. Both suites still passed, 35/35 and 18/18.
+So nothing shipped tests the union. The probe does: with `'every'`, 4 nav checks fail,
+including Robin's `device:reboot`.
+
 ## Phase 3 - orgs, members, invites
 
 <!-- Anything no document states. Invite lifecycle states. -->

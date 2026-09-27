@@ -43,6 +43,57 @@ Even then I would pin it per key, not read it from the token.
 
 ---
 
+### The trace comes from `decide()` itself, not from a second explainer
+
+**What I chose:** `decide()` takes an optional `trace` array. `resolve()` passes `null`,
+`explain()` passes an array. One code path makes the decision and the explanation.
+**Why:** when I fixed `windowState` (bug 3, BUILD-LOG Phase 2), the fix reached `explain()`
+with no extra change. A separate explainer would still compare strings and report a grant
+as active that the engine treats as expired.
+**What I rejected:** a separate `explain()` that re-walks the grants. It is simpler to read,
+but it is a second copy of the rules, and copies drift.
+**What would change my mind:** if the "why?" inspector is not built, I delete `explain()` and
+the trace. Unused code is not worth defending.
+
+---
+
+### Org-level has two meanings: `'any'` for nav, `'every'` for granting org-wide
+
+**What I chose:** `scopeState(grant, deviceId, orgMode)`. Nav and page gating use `'any'`
+(device allows count, device denies do not). `assertMayGrant` uses `'every'` for an org-wide
+grant (device denies count, device allows do not).
+**Why:** `scripts/probe-engine.js`. With `'any'` everywhere, a viewer holding `device:control`
+on one device granted it org-wide: `allowed`, want `refused 403`. With `'every'` everywhere,
+4 nav checks fail, including Robin's `device:reboot` at org level.
+The shipped suites pass either way, so they could not settle this.
+**What I rejected:** one org-level meaning. Each single choice fails one side of the probe.
+**What would change my mind:** a test that expects an org-wide grant to be allowed from a
+one-device allow. I think it would be laundering, but I would follow the test and argue it here.
+
+---
+
+### Grant windows compare instants, not strings
+
+**What I chose:** `windowState` compares `Date.parse(...)` against `now.getTime()`.
+**Why:** a grant with `expires_at = '2030-01-01T09:00:00Z'` was still `allow` at
+`09:00:00.000Z`, because `.` sorts before `Z`. That breaks D7. Probe:
+`at expiry, written without ms`.
+**What I rejected:** keeping string compare and normalising timestamps on write. It only holds
+if every writer normalises: the seed, every route, and any test fixture that inserts rows
+directly. One miss brings the bug back, silently.
+**What would change my mind:** moving the window check into SQL for speed. Then I would
+normalise on write and add a `CHECK` on the format, so the database enforces it.
+
+---
+
+## Tools used
+
+- Claude drafted `verifyAccessToken` and the permission engine. Claude's review found the
+  3 engine bugs with `scripts/probe-engine.js` and fixed them. I read every change and
+  can explain each line.
+
+---
+
 ## Where this repo argues with itself
 
 <!-- For each contradiction: quote both statements, say which one you built against, and why. -->
