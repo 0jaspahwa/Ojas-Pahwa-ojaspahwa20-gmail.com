@@ -200,9 +200,13 @@ export function explain(db, { userId, orgId, permission, deviceId = null, now = 
 }
 
 // Exact check for one permission. ctx needs { userId, orgId }.
+// An org-level question reuses ctx.permissions when context.js already resolved them,
+// so one request does not resolve the same set twice.
 export function check(db, ctx, permission, deviceId = null) {
-  return resolve(db, { userId: ctx.userId, orgId: ctx.orgId, deviceId }).permissions[permission]
-    ?? deny(null, 'unknown_permission');
+  const set = deviceId === null && ctx.permissions
+    ? ctx.permissions
+    : resolve(db, { userId: ctx.userId, orgId: ctx.orgId, deviceId }).permissions;
+  return set[permission] ?? deny(null, 'unknown_permission');
 }
 
 export function can(db, ctx, permission, deviceId = null) {
