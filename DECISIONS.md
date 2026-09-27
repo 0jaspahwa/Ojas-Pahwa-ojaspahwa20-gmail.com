@@ -148,6 +148,44 @@ in Globex.
 admin would lock a person out of orgs that admin cannot see. That is a cross-org effect,
 exactly what AUTH-DATA-MODEL §4 forbids.
 
+### "Flip the membership from `invited` to `active`" needs a user that does not exist yet
+
+- AUTH-DATA-MODEL §6: accept will "upsert the user, flip the membership from `invited` to
+  `active`".
+- `db/schema.sql`: `memberships.user_id TEXT NOT NULL REFERENCES users(id)`.
+
+A person invited by email has no `users` row, so there is no `invited` membership to flip.
+**Built against:** the schema. The membership is created on accept, or an old `removed`
+row is reactivated. `invited` status is never written. `server/routes/invites.js`.
+
+### The unique index does not make accept single-use
+
+- AUTH-DATA-MODEL §6: "Two concurrent accepts of the same token: exactly one wins. The partial
+  unique index `one_live_invite_per_email` makes that a database guarantee."
+- The index is on `(org_id, email) WHERE accepted_at IS NULL AND revoked_at IS NULL`. It stops
+  two live invites. It says nothing about accepting one invite twice.
+
+**Built against:** the behaviour, not the stated mechanism. Accept re-reads the invite inside
+an IMMEDIATE transaction. Probe: `5 rounds of two parallel accepts: one 200, one 409`, two
+server processes.
+
+### Equal role is 403, but owners must demote owners
+
+- PERMISSIONS §6: "modify a user of equal role (admin → admin) | `403`".
+- `check-api.js`: `demoting a NON-last owner is allowed` (owner demotes owner, 200).
+
+**Built against:** both. Equal role is 403, except for the top role. Without the exception a
+co-owner could never be demoted, and the last-owner rule already guards the danger.
+`assertCanModify` in `server/lifecycle.js`. Probe: `admin -> admin (equal, not top) -> 403`.
+
+### Invite tokens: `sha256(token)` or HMAC?
+
+- AUTH-DATA-MODEL §6: "stores `sha256(token)`".
+- `server/auth.js` (given): `hashInviteToken` is HMAC-SHA256 with `APP_HASH_KEY`.
+
+**Built against:** the given code. A keyed hash cannot be checked offline by someone who only
+reads the database. Probe: `token stored hashed`.
+
 ## Deliberately not built
 
 <!-- What you chose not to build, and why. -->

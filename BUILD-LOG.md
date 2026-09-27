@@ -163,6 +163,27 @@ before reads and before inserts. Otherwise an expired control would still hold t
 `check-api.js`: 29 ok. Stops at `owner demotes Sam` (members routes not built).
 `the live session SURVIVES` passes, but falsely: the demotion never happened.
 
+## Phase 3 - orgs, members, invites (built after sessions)
+
+### 2026-09-27 · members, orgs, invites: check-api green
+
+`check-api.js` 66/66. `the live session SURVIVES` is now a real pass.
+Bug in my own code, found by reading it: a refused role change was audited twice (a helper
+wrapped in `auditDenials`, called inside another). Probe now checks one refusal = one row.
+"Owner" in the rank rules is the top-ranked role from `roles`, not the string `'owner'`.
+Expired invites still count as live for `one_live_invite_per_email` (it only checks
+`accepted_at` and `revoked_at`). Without retiring them, that email could never be invited again.
+Accepting an invite for an existing account needs that account's password. Otherwise the
+invite token alone would sign someone in to an account.
+Removing a member revokes their grants, same reason as transfer: a re-invite would revive them.
+
+### 2026-09-27 · what IMMEDIATE actually buys (I had it wrong)
+
+I thought IMMEDIATE stopped a double win in the races. Removed it and re-ran the probe:
+data stayed right (one user, one owner every round), but one accept round in five gave
+`500 SQLITE_BUSY_SNAPSHOT`. WAL already refuses the loser. IMMEDIATE makes the loser wait
+and get a clean 409. Fixed my code comments, which claimed the wrong thing.
+
 ## Phase 3 - orgs, members, invites
 
 <!-- Anything no document states. Invite lifecycle states. -->
