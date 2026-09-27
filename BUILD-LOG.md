@@ -121,6 +121,13 @@ of 5). That is an account oracle. With it: 56.4 vs 56.8 ms. `probe-auth.js` 21/2
 route does not exist yet. Not a real pass until that route is built. `no token -> 401`
 gets 404 for the same reason: the router matches the path before auth runs.
 
+### 2026-09-27 · predictions before devices, grants, refresh
+
+1. `GET /devices` runs the same number of queries for 5 devices or 100. Guess: about 10.
+2. With the devices route in place, Acme-on-Globex 404s in `context.js`. Remove the org check
+   there and it becomes 200 with Acme's devices, not a 404.
+3. An unknown permission fails the insert with `SQLITE_CONSTRAINT_FOREIGNKEY`.
+
 ## Phase 3 - orgs, members, invites
 
 <!-- Anything no document states. Invite lifecycle states. -->
