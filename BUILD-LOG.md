@@ -1,73 +1,80 @@
 # BUILD-LOG
 
-Append to this as you go. Commit it with the code it describes — the timestamps are part of the
-evidence, and a log that arrives in one commit at the end reads as what it is.
+## Phase 0 - orientation
 
-Five lines is a real entry. Short and dated is better than long and reconstructed.
+### 2026-09-26 · db:load failed on Windows
 
-The categories we look for are listed in `DISCOVERY-BRIEF.md`. The example below shows the
-*shape* of a good entry; it is a recreation of something already printed in `README.md`, so it
-gives nothing away.
+Expected `npm run db:load` to work out of the box.
+Got: `ENOENT: no such file or directory, open 'F:\F:\interview\rhino\remoteops\db\schema.sql'`.
+Cause: `new URL(...).pathname` gives `/F:/interview/...` on Windows. Node treats it as a path on
+the current drive, so the drive letter appears twice.
+Fix: `fileURLToPath(new URL(...))` in `scripts/load-db.js`. The DB loads now.
+Made the same change to `DIST` in `server/index.js`.
 
----
+### 2026-09-27 · my own fix broke the server
 
-<!-- EXAMPLE — delete this block, keep the shape.
+I changed `server/index.js` without adding the import and did not run the server after.
+Got: `ReferenceError: fileURLToPath is not defined` at `server/index.js:22`. The server did not
+start at all.
+Fix: `import { fileURLToPath } from 'node:url';`. The server starts on :8080. Commit `623de88`.
+Lesson: run it after every change, even a one-line change.
 
-## 2026-03-04 · Phase 0 — orientation
+### 2026-09-27 · the starting line
 
-Expected the unknown-permission test to fail on my validation code.
-Observed: it passed, with foreign_keys ON, and *also* passed with the pragma removed — so the
-check was never running, and the "pass" was the schema loading fine while enforcing nothing.
-Changed: moved `foreign_keys = ON` to connection open and re-ran; now it raises
-`FOREIGN KEY constraint failed` as the README said it would.
-Note: this is the failure mode where a passing test is worse than a failing one.
+- `check-jwt.js`: 0 passed, 43 failed. All hit the `verifyAccessToken` TODO.
+- `check-permissions.js`: crashes on the first case. `resolve()` is a stub.
+- `check-personalisation.js`: fails on the same stub.
+- `check-api.js`: `dana logs in` got 404, want 200. Then it aborts.
 
--->
+Surprise: login is 404, not 401. I thought login came with the token signing. It does not.
+`server/routes/index.js` registers nothing, so every `/v1/*` route is mine, login included.
 
-## Phase 0 — orientation
+### 2026-09-27 · my personalised fixture
 
-_Installed, reset the database, read the documents, ran the suites against the untouched skeleton.
-What did the starting line actually look like, and which failure surprised you?_
+`npm run fingerprint` gives: role `reviewer` (rank 35), permission `device:reboot`,
+org Ironside Labs. `device:reboot` is allowed on `dev_p_bb3398_a` and denied on `dev_p_bb3398_b`.
+Reviewer baseline: `device:list`, `device:view`, `user:invite`, `user:remove`.
 
-## Phase 1 — token verification
+Two things I noticed:
+- Rank 35 is between operator (30) and admin (40), but reviewer has `user:invite` and
+  `user:remove`, which operator lacks, and lacks `device:control`, which operator has.
+  So rank says nothing about permissions. The engine must read `role_permissions`.
+- Reviewer can remove users but has no `user:read`. Open question: can reviewer list the
+  members it is allowed to remove? No document covers this.
 
-_What did you expect each failure mode to look like before you ran it? Which one behaved
-differently from your expectation, and what did that tell you?_
+## Phase 1 - token verification
 
-## Phase 2 — caller context and the resolution engine
+<!-- What did you expect each failure mode to look like before you ran it? Which one behaved
+differently, and what did that tell you? -->
 
-_This is where most people's first model is wrong. Write down the model you started with, the
-observation that broke it, and the model you moved to. Be specific about the observation._
+## Phase 2 - caller context and the resolution engine
 
-## Phase 3 — orgs, members, invites
+<!-- The model you started with, the observation that broke it, the model you moved to. -->
 
-_Anything you had to work out that no document states. Invite lifecycle states are a common
-source of this._
+## Phase 3 - orgs, members, invites
 
-## Phase 4 — devices and grants
+<!-- Anything no document states. Invite lifecycle states. -->
 
-_What happens at the boundary where two grants disagree, or where a grant's scope and the
-question's scope differ? Say what you predicted and what you got._
+## Phase 4 - devices and grants
 
-## Phase 5 — sessions
+<!-- Two grants disagree, or grant scope and question scope differ. Predicted vs got. -->
 
-_Two permissions, one device. What did you have to resolve, and in what order, to keep the two
-failure reasons distinguishable?_
+## Phase 5 - sessions
 
-## Phase 6 — audit
+<!-- Two permissions, one device. What order keeps the two failure reasons distinct? -->
 
-_What did you decide counts as an auditable event, and what pushed you to that line?_
+## Phase 6 - audit
 
-## Phase 7 — the console
+<!-- What counts as an auditable event, and why. -->
 
-_Where did the server's answer and your instinct disagree about what should be on screen?_
+## Phase 7 - the console
 
-## Phase 8 — hardening
+<!-- Where the server's answer and your instinct disagreed about what should be on screen. -->
 
-_What did you measure, what did you fix, and what did you deliberately leave alone? Anything you
-chose not to build belongs here with its reason._
+## Phase 8 - hardening
+
+<!-- What you measured, what you fixed, what you left alone and why. -->
 
 ## Open threads
 
-_Things you know are wrong, unfinished, or that you would do differently with another day. Listing
-these honestly is worth more than pretending they do not exist — we will find them anyway._
+- Reviewer has `user:remove` without `user:read`. Not settled yet.
