@@ -61,7 +61,7 @@ test('People: a device deny is skipped at org level', async ({ page }) => {
 test('My access: open to everyone, about yourself only', async ({ page }) => {
   await login(page, 'sam@example.test');   // operator: no People card
   await expect(page.getByTestId('nav-people')).toHaveCount(0);
-  await page.getByTestId('nav-me').click();
+  await page.getByTestId('my-access').click();
   await expect(page.getByTestId('why-user')).toHaveCount(0);
 
   await page.getByTestId('why-permission').selectOption('device:terminal');
@@ -73,4 +73,10 @@ test('My access: open to everyone, about yourself only', async ({ page }) => {
   await page.getByTestId('why-submit').click();
   await expect(page.getByTestId('why-step')).toContainText(['No grant mentions this permission.',
     'The operator role does not include audit:read.', 'Nobody granted this, so it is denied.']);
+});
+
+test('My access is not a nav-* card: an owner still has exactly six', async ({ page }) => {
+  await login(page, 'dana@example.test');
+  await expect(page.locator('[data-testid^="nav-"]')).toHaveCount(6);
+  await expect(page.getByTestId('my-access')).toHaveCount(1);
 });

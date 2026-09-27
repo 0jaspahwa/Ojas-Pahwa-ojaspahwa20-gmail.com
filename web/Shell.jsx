@@ -25,7 +25,7 @@ const CARDS = [
   ['sessions', 'Sessions', ['session:view'], Sessions],
   ['audit', 'Audit', ['audit:read'], Audit],
   ['admin', 'Admin', ['org:update', 'org:delete'], Admin],
-  ['me', 'My access', null, MyAccess],
+  ['my-access', 'My access', null, MyAccess], // not a nav-* card: the six cards stay six
 ];
 
 export function Shell({ session }) {
@@ -83,7 +83,7 @@ function ShellBody({ session }) {
             {c.label}
           </Action>
         ) : (
-          <button key={c.key} type="button" data-testid={`nav-${c.key}`}
+          <button key={c.key} type="button" data-testid={c.key}
                   aria-current={c.key === view} onClick={() => setView(c.key)}>
             {c.label}
           </button>
