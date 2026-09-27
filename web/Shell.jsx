@@ -6,10 +6,11 @@
 import React, { useState } from 'react';
 import { api, applySession, signOut } from './api.js';
 import { Action, Messages, allowed, useRun } from './ui.jsx';
+import { Devices } from './views/Devices.jsx';
 
 // Filled in card by card.
 const Soon = () => <p>Coming next.</p>;
-const [Devices, People, Grants, Sessions, Audit, Admin] = [Soon, Soon, Soon, Soon, Soon, Soon];
+const [People, Grants, Sessions, Audit, Admin] = [Soon, Soon, Soon, Soon, Soon];
 
 // [key, label, the permission(s) that show it, component]
 const CARDS = [
