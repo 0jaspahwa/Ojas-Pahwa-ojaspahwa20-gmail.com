@@ -115,18 +115,21 @@ export function registerInviteRoutes(router, { db }, { withToken, setRefreshCook
     send(res, 200, { orgName: inv.org_name, role: inv.role, email: inv.email, expiresAt: inv.expires_at });
   });
 
-  // Public. A new person sets name and password. An existing user must prove it is them
-  // with their current password: the token alone must not sign in to someone's account.
+  // Public. A new person sets name and password, and is signed in.
+  // An existing account is attached on the token alone (the invite went to that email),
+  // but the token never signs anyone in: tokens are issued only if the person also gives
+  // the account's current password. A wrong password attaches nothing (401).
   router.post('/v1/invites/:token/accept', (ctx, p, res) => {
     const inv = liveInvite(p.token);
     const existing = userByEmail.get(inv.email);
     const { name, password } = ctx.body;
-    if (typeof password !== 'string') throw badRequest('password is required');
+    let signIn = true;
     if (existing) {
-      if (!verifyPassword(password, existing.password_hash)) throw unauthenticated('wrong password for this account');
+      signIn = typeof password === 'string' && password !== '';
+      if (signIn && !verifyPassword(password, existing.password_hash)) throw unauthenticated('wrong password for this account');
     } else {
       if (typeof name !== 'string' || !name.trim() || name.trim().length > 100) throw badRequest('name must be 1-100 characters');
-      if (password.length < 8) throw badRequest('password must be at least 8 characters');
+      if (typeof password !== 'string' || password.length < 8) throw badRequest('password must be at least 8 characters');
     }
     const passwordHash = existing ? null : hashPassword(password);
 
@@ -157,7 +160,12 @@ export function registerInviteRoutes(router, { db }, { withToken, setRefreshCook
                   targetId: inv.id, result: 'allow', requestId: ctx.requestId });
     }).immediate();
 
+    const membership = membershipOf.get(inv.org_id, userId);
+    if (!signIn) {
+      send(res, 200, { orgId: inv.org_id, role: membership.role, email: inv.email, signedIn: false });
+      return;
+    }
     setRefreshCookie(res, userId);
-    send(res, 200, withToken(userId, inv.org_id, membershipOf.get(inv.org_id, userId)));
+    send(res, 200, { ...withToken(userId, inv.org_id, membership), signedIn: true });
   });
 }

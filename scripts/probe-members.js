@@ -33,7 +33,7 @@ async function call(method, path, { token, body, port = PORTS[0] } = {}) {
   if (body) headers['content-type'] = 'application/json';
   const res = await fetch(`http://localhost:${port}/v1${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
   const text = await res.text();
-  return { status: res.status, body: text ? JSON.parse(text) : null };
+  return { status: res.status, body: text ? JSON.parse(text) : null, cookie: res.headers.get('set-cookie') };
 }
 const login = async (email, orgId, password = 'demo1234') =>
   (await call('POST', '/auth/login', { body: { email, password, ...(orgId ? { orgId } : {}) } })).body?.token;
@@ -96,8 +96,15 @@ try {
   check('existing user, wrong password -> 401', (await call('POST', `/invites/${inv.body.inviteToken}/accept`, { body: { password: 'nope-nope' } })).status, 401);
   const back = await call('POST', `/invites/${inv.body.inviteToken}/accept`, { body: { name: 'ignored', password: 'demo1234' } });
   check('existing user, right password -> 200, viewer again', [back.status, back.body.role], [200, 'viewer']);
+  check('  ...and is signed in (token + refresh cookie)', [typeof back.body.token, !!back.cookie], ['string', true]);
   check('  ...no duplicate user row', db.prepare("SELECT count(*) n FROM users WHERE email = 'viewer@acme.test'").get().n, 1);
   check('  ...old grants did not come back', db.prepare("SELECT count(*) n FROM grants WHERE user_id = 'usr_acme_viewer' AND org_id = 'org_acme' AND revoked_at IS NULL").get().n, 0);
+
+  const attach = await call('POST', '/orgs/org_acme/invites', { token: dana, body: { email: 'owner@globex.test', role: 'auditor' } });
+  const noPw = await call('POST', `/invites/${attach.body.inviteToken}/accept`, { body: {} });
+  check('existing user, no password -> 200, attached', [noPw.status, noPw.body.role, role('usr_globex_owner')?.status], [200, 'auditor', 'active']);
+  check('  ...but not signed in: no token, no cookie', ['token' in noPw.body, noPw.cookie, noPw.body.signedIn], [false, null, false]);
+  check('  ...no duplicate user row', db.prepare("SELECT count(*) n FROM users WHERE email = 'owner@globex.test'").get().n, 1);
 
   const old = await call('POST', '/orgs/org_acme/invites', { token: dana, body: { email: 'late@example.test', role: 'viewer' } });
   db.prepare("UPDATE invites SET expires_at = '2020-01-01T00:00:00.000Z' WHERE id = ?").run(old.body.id);

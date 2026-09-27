@@ -24,7 +24,7 @@ export function Invite({ token, onAccepted }) {
     setError(null);
     try {
       await call('POST', `${path}/accept`, { name, password });
-      // Accepting also set a refresh cookie. Drop it: the person signs in on purpose.
+      // Accepting may also have set a refresh cookie. Drop it: the person signs in on purpose.
       await call('DELETE', '/auth/refresh').catch(() => {});
       onAccepted();
     } catch (err) {
@@ -48,7 +48,7 @@ export function Invite({ token, onAccepted }) {
           <p>You have been invited as <strong data-testid="invite-role">{invite.role}</strong>.</p>
           <label>Email <input data-testid="invite-email" value={invite.email} readOnly /></label>
           <label>Your name <input data-testid="invite-name" value={name} onChange={(e) => setName(e.target.value)} /></label>
-          <label>Password (8 or more characters; your current one if you already have an account)
+          <label>Password (new account: 8 or more characters; existing account: your current one, or leave empty)
             <input data-testid="invite-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </label>
           {errorBox}
