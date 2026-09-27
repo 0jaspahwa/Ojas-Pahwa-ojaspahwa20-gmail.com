@@ -229,6 +229,24 @@ Then signed in as Sam. Acme (operator): Devices + Sessions, Control on all 5 row
 Terminal, no Audit. Globex (auditor): Audit card present, 0 Control buttons, theme amber.
 Web storage empty in both.
 
+### 2026-09-27 · the "why?" inspector (my extra)
+
+`GET /users/:id/explain`: same gate as `/effective`, so I moved that gate into one helper
+(`askAbout` in `orgs.js`) instead of copying it.
+Probe: `explain()` vs `resolve()` for every membership x permission x device: 900/900.
+First run never hit "not a member": the fixture has no removed member. Added one, still
+900/900, now every trace branch is reached.
+Broke it on purpose (explain skipped deny grants): 35 of 900 disagreed. Restored: 900/900.
+The baseline step used to be an English sentence from the server. Changed it to data
+(`role`, `contains`), so the console writes the words and the server stays wordless.
+UI: "Why?" in People (anyone), and "My access" for everyone (yourself only). The permission
+list is the keys of the server's set, so `device:reboot` shows up. 4 new Playwright tests;
+suite 29/29.
+Manual check hit my own refresh cookie: the preview browser still held Sam's session from
+earlier, so the page opened as Sam, not the login form. Working as designed.
+`db:reset` was `rm -f ... && npm run db:load`: `rm` fails on Windows. `load-db.js` already
+deletes the files, so the script is now just `node scripts/load-db.js`.
+
 ## Phase 8 - hardening
 
 <!-- What you measured, what you fixed, what you left alone and why. -->

@@ -43,17 +43,22 @@ Even then I would pin it per key, not read it from the token.
 
 ---
 
-### The trace comes from `decide()` itself, not from a second explainer
+### Trace comes from `decide()`, not a second explainer
 
 **What I chose:** `decide()` takes an optional `trace` array. `resolve()` passes `null`,
 `explain()` passes an array. One code path makes the decision and the explanation.
-**Why:** when I fixed `windowState` (bug 3, BUILD-LOG Phase 2), the fix reached `explain()`
-with no extra change. A separate explainer would still compare strings and report a grant
-as active that the engine treats as expired.
-**What I rejected:** a separate `explain()` that re-walks the grants. It is simpler to read,
-but it is a second copy of the rules, and copies drift.
-**What would change my mind:** if the "why?" inspector is not built, I delete `explain()` and
-the trace. Unused code is not worth defending.
+Only `GET /users/:id/explain` builds a trace; normal requests never do.
+**Why:** `scripts/probe-explain.js` compares `explain().decision` with
+`resolve().permissions[p]` for every membership x permission x device (and org level), in
+all three orgs incl. the personalised one: **900 checked, 900 agree**. It reaches every
+trace branch (active, suspended, not a member; expired, not started, other device).
+Broken on purpose (explain skipped deny grants): **35 of 900 disagree**, every one a case a
+deny decides. Also: the `windowState` fix (bug 3, Phase 2) reached `explain()` for free.
+**What I rejected:** a separate `explain()` that re-walks the grants. It reads more simply,
+but it is a second copy of the rules. The probe shows how fast a copy goes wrong: one
+skipped step, 35 wrong answers, and nothing else in the suites would notice.
+**What would change my mind:** if tracing slowed normal requests. It cannot today: every
+trace line is behind `if (trace)`, and `resolve()` passes `null`.
 
 ---
 
