@@ -34,5 +34,38 @@ export function endActiveSessions(db, { orgId, userId = null, deviceId = null, r
         AND (? IS NULL OR id <> ?)`
   ).run(reason, orgId, userId, userId, deviceId, deviceId, exceptSessionId, exceptSessionId).changes;
 }
-export function snapshotAuthority(db, { userId, orgId, deviceId }) { throw todo('snapshotAuthority'); }
-export function sessionExpiry(db, orgId) { throw todo('sessionExpiry'); }
+// What a session was started on. Stored in sessions.authorized_by and never updated:
+// this snapshot, not the live permission set, is the session's authority (grandfathering).
+// Takes the set assertCanStartSession already resolved, so nothing is resolved twice.
+export function snapshotAuthority({ role, mode, permission, set }) {
+  return JSON.stringify({
+    role,
+    mode,
+    'session:start': set['session:start'],
+    [permission]: set[permission],
+    at: new Date().toISOString(),
+  });
+}
+
+// started_at + the org's max_session_minutes. Every session has an end.
+// Pass the same startedAt you insert: two clocks (JS and SQLite's default) drift apart.
+export function sessionExpiry(db, orgId, startedAt) {
+  const { max_session_minutes: minutes } = db.prepare(
+    'SELECT max_session_minutes FROM organizations WHERE id = ?'
+  ).get(orgId);
+  return new Date(Date.parse(startedAt) + minutes * 60_000).toISOString();
+}
+
+// Sessions past expires_at still read 'active' until something ends them. Call this
+// before reading sessions, and before inserting one (an expired exclusive session
+// would otherwise still hold the unique index).
+export function expireSessions(db, { orgId = null, deviceId = null }) {
+  return db.prepare(
+    `UPDATE sessions
+        SET state = 'ended', end_reason = 'session_expired', ended_at = expires_at
+      WHERE state IN ('connecting', 'active')
+        AND expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now')
+        AND (? IS NULL OR org_id = ?)
+        AND (? IS NULL OR device_id = ?)`
+  ).run(orgId, orgId, deviceId, deviceId).changes;
+}
