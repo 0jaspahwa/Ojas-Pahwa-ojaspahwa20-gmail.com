@@ -7,10 +7,11 @@ import React, { useState } from 'react';
 import { api, applySession, signOut } from './api.js';
 import { Action, Messages, allowed, useRun } from './ui.jsx';
 import { Devices } from './views/Devices.jsx';
-
-// Filled in card by card.
-const Soon = () => <p>Coming next.</p>;
-const [People, Grants, Sessions, Audit, Admin] = [Soon, Soon, Soon, Soon, Soon];
+import { People } from './views/People.jsx';
+import { Grants } from './views/Grants.jsx';
+import { Sessions } from './views/Sessions.jsx';
+import { Audit } from './views/Audit.jsx';
+import { Admin } from './views/Admin.jsx';
 
 // [key, label, the permission(s) that show it, component]
 const CARDS = [
