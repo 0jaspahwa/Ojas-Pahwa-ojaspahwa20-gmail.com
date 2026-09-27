@@ -70,13 +70,44 @@ export function issueAccessToken({ userId, orgId, role, permVersion }, secret) {
 // AUTH-DATA-MODEL.md §10 lists the failure modes; §2 defines the claim set.
 // `node scripts/check-jwt.js` is the public test suite for this function.
 // ---------------------------------------------------------------------------
+// Parse one base64url segment as a JSON object. Anything else is null.
+// JSON.parse('null') and JSON.parse('"x"') succeed, so "parsed" is not enough.
+function decodeObject(segment) {
+  try {
+    const value = JSON.parse(unb64(segment).toString('utf8'));
+    return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 export function verifyAccessToken(token, secret) {
-  // YOURS TO WRITE. Every failure mode listed above must be a 401 UNAUTHENTICATED.
-  // `node scripts/check-jwt.js` is the public suite for this function.
-  throw Object.assign(
-    new Error('TODO: server/auth.js — verifyAccessToken() is yours to write (AUTH-DATA-MODEL.md §10).'),
-    { code: 'NOT_IMPLEMENTED' }
-  );
+  if (typeof token !== 'string') throw unauthenticated('missing token');
+  const parts = token.split('.');
+  if (parts.length !== 3) throw unauthenticated('malformed token');
+  const [h, p, s] = parts;
+
+  // The header only has to match what we issue. We never pick an algorithm from it.
+  const header = decodeObject(h);
+  if (!header || header.alg !== ALG || header.typ !== 'JWT') throw unauthenticated('bad token header');
+
+  // Signature before payload: nothing unsigned gets parsed.
+  // Length check first, because timingSafeEqual throws on unequal lengths.
+  const expected = createHmac('sha256', secret).update(`${h}.${p}`).digest();
+  const actual = unb64(s);
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    throw unauthenticated('bad token signature');
+  }
+
+  const claims = decodeObject(p);
+  if (!claims) throw unauthenticated('bad token payload');
+
+  const now = Math.floor(Date.now() / 1000);
+  if (typeof claims.exp !== 'number' || claims.exp <= now) throw unauthenticated('token expired');
+  if (claims.iss !== ISS || claims.aud !== AUD) throw unauthenticated('wrong issuer or audience');
+  if (typeof claims.jti !== 'string' || claims.jti === '') throw unauthenticated('missing jti');
+
+  return claims;
 }
 
 

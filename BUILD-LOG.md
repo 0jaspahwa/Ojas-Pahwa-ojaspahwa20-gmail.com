@@ -57,6 +57,18 @@ differently, and what did that tell you? -->
    I need an "is it an object" check.
 4. Order: check the signature before parsing the payload. Then nothing unsigned gets parsed.
 
+### 2026-09-27 · checked the predictions in node, then built it
+
+- 1 held: `RangeError ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH`.
+- 2 held, with a detail I missed: `'!!!not-base64!!!'` does not decode to empty. The valid
+  characters still decode, giving 7 bytes of junk. So only the length and compare checks
+  stop it.
+- 3 held: `TypeError`. Added `decodeObject`, which returns null for null, strings and arrays.
+
+`check-jwt.js`: 43 passed, 0 failed, first run. Extra probes (`null` header, array header)
+also give 401, not 500.
+`check-api.js` still fails: `dana logs in` 404. Next up is the login route.
+
 ## Phase 2 - caller context and the resolution engine
 
 <!-- The model you started with, the observation that broke it, the model you moved to. -->

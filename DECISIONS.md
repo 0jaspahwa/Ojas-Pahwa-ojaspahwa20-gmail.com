@@ -15,6 +15,34 @@ into a path on every OS.
 
 ---
 
+### The token verifier checks signature length before `timingSafeEqual`
+
+**What I chose:** `actual.length !== expected.length || !timingSafeEqual(...)` in
+`verifyAccessToken`, `server/auth.js`.
+**Why:** in node, `timingSafeEqual` on 32 vs 6 bytes threw
+`RangeError ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH`. Without the check, `signature truncated`
+in `check-jwt.js` becomes a 500, not a 401. BUILD-LOG, Phase 1.
+**What I rejected:** comparing the signatures as strings with `===`. It never throws, but it
+stops at the first different character, so response time leaks how much of the signature is
+right.
+**What would change my mind:** nothing here. Length is not secret: every HS256 signature is
+32 bytes, so checking it first leaks nothing.
+
+---
+
+### The header must match exactly; there is no list of banned algorithms
+
+**What I chose:** `header.alg !== 'HS256' || header.typ !== 'JWT'` rejects. The algorithm is
+never read from the header. HMAC-SHA256 is always used.
+**Why:** `check-jwt.js` rejects `none`, `HS512`, `RS256`, a missing `alg` and a missing `typ`.
+Only an exact match covers all five, including ones not in the test.
+**What I rejected:** banning `alg: none` only. That passes the three `none` cases but accepts
+`HS512`, `RS256` and a missing `alg`.
+**What would change my mind:** needing a second algorithm, e.g. RS256 for other services.
+Even then I would pin it per key, not read it from the token.
+
+---
+
 ## Where this repo argues with itself
 
 <!-- For each contradiction: quote both statements, say which one you built against, and why. -->
