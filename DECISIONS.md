@@ -98,6 +98,42 @@ normalise on write and add a `CHECK` on the format, so the database enforces it.
 
 <!-- For each contradiction: quote both statements, say which one you built against, and why. -->
 
+### Suspension bumps `pv`, yet a suspended token should get 403
+
+- AUTH-DATA-MODEL §1: `pv` "goes up whenever something authorization-relevant changes: ...
+  a suspension, a removal."
+- AUTH-DATA-MODEL §10: "a token for a suspended membership → `403` with an empty permission set".
+
+If both hold and freshness is checked first, every suspended token is stale, so the answer is
+always `401 TOKEN_STALE`. The §10 `403` can never happen.
+
+**Built against:** both. Suspension still bumps `pv`, and `server/context.js` skips the
+freshness check for a suspended member only. The caller is built with zero allows, so routes
+return `403` with reason `suspended`.
+**Why this is safe:** freshness exists so a stale token cannot carry old authority. A suspended
+member has no authority to carry: every permission is `deny`, reason `suspended`.
+Probe: `suspended (pv bumped): caller still built ... with zero allows` in
+`scripts/probe-context.js`.
+**Why not the other way:** not bumping `pv` on suspension breaks §1 and leaves every other
+token check to catch it. Letting 401 win makes §10 dead text, and the client would try to
+refresh a token for a membership that cannot be refreshed into anything useful.
+
+### "Suspended user has no permissions anywhere", but suspension is per org
+
+- PERMISSIONS §3, step 1: "A deleted or suspended user has no permissions anywhere."
+- BRIEF §5.1: suspension is `POST /v1/orgs/{org}/members/{userId}/suspend`, one membership.
+  AUTH-DATA-MODEL D16 and PERMISSIONS §9.13 ("ends their live sessions **in that org**")
+  agree it is per org.
+- `db/schema.sql`: "Users are NEVER deleted (D15)". There is no deleted user to handle.
+
+**Built against:** per-org. Suspension lives on `memberships.status`. `users` has no status
+column to hold an "anywhere" suspension.
+**Evidence:** probe `...Sam in Globex is untouched`: Sam suspended in Acme is still `auditor`
+in Globex.
+**Why not "anywhere":** it needs a user-level status the schema does not have, and one org's
+admin would lock a person out of orgs that admin cannot see. That is a cross-org effect,
+exactly what AUTH-DATA-MODEL §4 forbids.
+
 ## Deliberately not built
 
 <!-- What you chose not to build, and why. -->
