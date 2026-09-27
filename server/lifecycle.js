@@ -1,27 +1,58 @@
 // Shared domain rules: role ranks, last-owner protection, ending sessions.
 //
-// YOURS TO WRITE. This file ships as a stub.
+// The rules more than one route needs, so "what ends a session" has exactly one
+// implementation. Sources: PERMISSIONS.md §6-7 and D8.
 //
-// Put here the rules more than one route needs, so "what ends a session" has exactly
-// one implementation. Sources: PERMISSIONS.md §7.2 and D8.
-//
-// Two traps worth naming before you start:
-//   - `roles.rank` is MODIFICATION AUTHORITY ONLY. It must never answer a can()
-//     question. operator and auditor are unordered by permission, and ranking them is
-//     the modelling error the auditor role exists to catch.
-//   - a permission change does NOT end a session in flight (grantfathering). Suspension,
-//     membership removal and device transfer DO. See PERMISSIONS.md §7.
+// - `roles.rank` is modification authority only. It never answers a can() question.
+// - A permission change does not end a session in flight (grandfathering). Suspension,
+//   membership removal and device transfer do.
 
-const todo = (name) =>
-  Object.assign(
-    new Error(`TODO: server/lifecycle.js — ${name}() is yours to write (BRIEF.md §3).`),
-    { code: 'NOT_IMPLEMENTED' }
-  );
+import { badRequest, forbidden, lastOwner } from './http.js';
 
-export function roleRanks(db) { throw todo('roleRanks'); }
-export function assertRoleExists(db, role) { throw todo('assertRoleExists'); }
-export function assertCanModify(db, callerRole, targetRole) { throw todo('assertCanModify'); }
-export function assertNotLastOwner(db, orgId, userId) { throw todo('assertNotLastOwner'); }
+// Modification authority (D8). Read from the roles table: "owner" here means the
+// top-ranked role, so no role name is written into these rules.
+export function roleRanks(db) {
+  return new Map(db.prepare('SELECT key, rank FROM roles').all().map((r) => [r.key, r.rank]));
+}
+
+const topRank = (ranks) => Math.max(...ranks.values());
+
+export function assertRoleExists(db, role) {
+  if (typeof role !== 'string' || !roleRanks(db).has(role)) throw badRequest('unknown role');
+}
+
+// You may act on a strictly lower role. The top role may also act on its equals:
+// otherwise a co-owner could never be demoted (check-api: "demoting a NON-last owner").
+export function assertCanModify(db, callerRole, targetRole) {
+  const ranks = roleRanks(db);
+  const caller = ranks.get(callerRole);
+  const target = ranks.get(targetRole);
+  if (caller > target || (caller === target && caller === topRank(ranks))) return;
+  throw forbidden(`a ${callerRole} cannot modify a ${targetRole}`, 'rank');
+}
+
+// You may hand out a role below your own. Only the top role may hand out the top role.
+export function assertCanAssign(db, callerRole, newRole) {
+  const ranks = roleRanks(db);
+  const caller = ranks.get(callerRole);
+  const wanted = ranks.get(newRole);
+  if (wanted < caller || caller === topRank(ranks)) return;
+  throw forbidden(`a ${callerRole} cannot assign ${newRole}`, 'rank');
+}
+
+// Refuse a change that would leave no active member holding the top role.
+// Call inside an IMMEDIATE transaction, so the count and the write share one write lock
+// and a racing request re-counts after the winner commits.
+export function assertNotLastOwner(db, orgId, userId) {
+  const ranks = roleRanks(db);
+  const top = [...ranks].find(([, rank]) => rank === topRank(ranks))[0];
+  const m = db.prepare('SELECT role, status FROM memberships WHERE org_id = ? AND user_id = ?').get(orgId, userId);
+  if (!m || m.role !== top || m.status !== 'active') return;
+  const { n } = db.prepare(
+    "SELECT count(*) AS n FROM memberships WHERE org_id = ? AND role = ? AND status = 'active'"
+  ).get(orgId, top);
+  if (n <= 1) throw lastOwner();
+}
 // The one place a session is ended. Filters are optional: pass userId, deviceId or both.
 // Returns how many sessions were ended.
 export function endActiveSessions(db, { orgId, userId = null, deviceId = null, reason, exceptSessionId = null }) {

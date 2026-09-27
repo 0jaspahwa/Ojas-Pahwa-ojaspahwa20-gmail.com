@@ -139,4 +139,7 @@ export function registerAuthRoutes(router, { db, secret }) {
   router.get('/v1/auth/me', (ctx, _params, res) => {
     send(res, 200, view(ctx.userId, ctx.orgId, ctx.membership, ctx.permissions));
   });
+
+  // Accepting an invite signs the person in exactly like login does.
+  return { withToken, setRefreshCookie };
 }

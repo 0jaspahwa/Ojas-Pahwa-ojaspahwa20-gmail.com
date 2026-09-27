@@ -5,11 +5,15 @@
 // Every endpoint is in BRIEF.md §5.1; the response shapes the console reads are in §5.2.
 
 import { registerAuthRoutes } from './auth.js';
+import { registerOrgRoutes } from './orgs.js';
+import { registerInviteRoutes } from './invites.js';
 import { registerDeviceRoutes } from './devices.js';
 import { registerSessionRoutes } from './sessions.js';
 
 export function registerRoutes(router, deps) {
-  registerAuthRoutes(router, deps);
+  const signIn = registerAuthRoutes(router, deps);
+  registerOrgRoutes(router, deps);
+  registerInviteRoutes(router, deps, signIn);
   registerDeviceRoutes(router, deps);
   registerSessionRoutes(router, deps);
 }
