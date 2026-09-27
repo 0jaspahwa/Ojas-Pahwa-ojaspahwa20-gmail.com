@@ -96,3 +96,10 @@ form.panel label { display: flex; gap: 6px; align-items: center; font-size: 13px
 
 .login .panel-box { width: 320px; padding: 28px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; }
 .login form p { margin: 0; font-size: 14px; }
+
+/* --- why? ------------------------------------------------------------------------- */
+.why { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 16px; }
+.why h3 { margin: 0 0 10px; font-size: 15px; }
+.why .panel { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: end; }
+.answer p { margin: 0 0 8px; font-weight: 500; }
+.answer ol { margin: 0; padding-left: 20px; font-size: 14px; display: grid; gap: 4px; }

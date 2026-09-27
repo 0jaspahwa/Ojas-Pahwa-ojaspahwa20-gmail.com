@@ -12,8 +12,12 @@ import { Grants } from './views/Grants.jsx';
 import { Sessions } from './views/Sessions.jsx';
 import { Audit } from './views/Audit.jsx';
 import { Admin } from './views/Admin.jsx';
+import { Why } from './views/Why.jsx';
 
-// [key, label, the permission(s) that show it, component]
+// My access: the inspector about yourself. Everyone may ask why about their own access.
+const MyAccess = ({ session }) => <section><h2>My access</h2><Why session={session} /></section>;
+
+// [key, label, the permission(s) that show it (null: always shown), component]
 const CARDS = [
   ['devices', 'Devices', ['device:list'], Devices],
   ['people', 'People', ['user:read'], People],
@@ -21,6 +25,7 @@ const CARDS = [
   ['sessions', 'Sessions', ['session:view'], Sessions],
   ['audit', 'Audit', ['audit:read'], Audit],
   ['admin', 'Admin', ['org:update', 'org:delete'], Admin],
+  ['me', 'My access', null, MyAccess],
 ];
 
 export function Shell({ session }) {
@@ -35,8 +40,8 @@ function ShellBody({ session }) {
   const perms = session.permissions;
   const org = session.orgs.find((o) => o.id === session.orgId);
   const cards = CARDS
-    .map(([key, label, gates, View]) => ({ key, label, View, perm: gates.find((p) => allowed(perms, p)) }))
-    .filter((c) => c.perm);
+    .map(([key, label, gates, View]) => ({ key, label, View, gates, perm: gates?.find((p) => allowed(perms, p)) }))
+    .filter((c) => c.perm || !c.gates);
   const [view, setView] = useState(cards[0]?.key);
   const run = useRun();
   const Active = cards.find((c) => c.key === view)?.View;
@@ -72,11 +77,16 @@ function ShellBody({ session }) {
       </header>
 
       <nav className="cards" aria-label="Sections">
-        {cards.map((c) => (
+        {cards.map((c) => c.gates ? (
           <Action key={c.key} set={perms} perm={c.perm} testid={`nav-${c.key}`}
                   aria-current={c.key === view} onClick={() => setView(c.key)}>
             {c.label}
           </Action>
+        ) : (
+          <button key={c.key} type="button" data-testid={`nav-${c.key}`}
+                  aria-current={c.key === view} onClick={() => setView(c.key)}>
+            {c.label}
+          </button>
         ))}
       </nav>
 

@@ -5,6 +5,7 @@
 import React, { useState } from 'react';
 import { api } from '../api.js';
 import { Action, allowed, useLoad, useRun } from '../ui.jsx';
+import { Why } from './Why.jsx';
 
 export function People({ session }) {
   const base = `/orgs/${session.orgId}`;
@@ -72,6 +73,8 @@ export function People({ session }) {
           })}
         </tbody>
       </table>
+
+      <Why session={session} members={data.members} />
     </section>
   );
 }
