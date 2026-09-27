@@ -148,6 +148,21 @@ gets 404 for the same reason: the router matches the path before auth runs.
 - Refresh: check, then rotate. Safe only because handlers are synchronous in one process.
 - `probe-routes.js` 48/48. `check-api.js`: 16 ok, stops at audit and sessions (not built).
 
+### 2026-09-27 · sessions and the audit list
+
+Race test: two server processes, one DB, 10 rounds of two parallel control starts.
+Every round: one 201, one 409. Dropped the unique index to check the probe: every round
+became 201 + 201, two active control sessions on one device. The index is the only lock.
+Wrong prediction in my probe: Sam asked for `terminal` and got 403, not 409. The seed has
+an org-wide deny on his `device:terminal`. The engine was right; changed the probe to control.
+Bug in my code: TTL came out as 60.0000167 min. `started_at` came from SQLite's clock,
+`expires_at` from JS. Now both come from one `startedAt`.
+Expired sessions stay `active` in the table until read. `expireSessions` marks them ended
+before reads and before inserts. Otherwise an expired control would still hold the index.
+`GET /sessions/:id` you may not read: 404, like a device you cannot view.
+`check-api.js`: 29 ok. Stops at `owner demotes Sam` (members routes not built).
+`the live session SURVIVES` passes, but falsely: the demotion never happened.
+
 ## Phase 3 - orgs, members, invites
 
 <!-- Anything no document states. Invite lifecycle states. -->
