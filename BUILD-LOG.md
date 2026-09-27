@@ -204,6 +204,31 @@ and get a clean 409. Fixed my code comments, which claimed the wrong thing.
 
 <!-- Where the server's answer and your instinct disagreed about what should be on screen. -->
 
+### 2026-09-27 · console built in 4 steps, Playwright 25/25
+
+Failed first: every test, at browser launch. Playwright 1.63 wanted Chromium headless
+shell 1243; only 1223 was installed. `npx playwright install chromium` fixed it.
+After that, each step passed its tests on the first run: shell 9/9, devices 9/9, cards 7/7,
+then the full suite 25/25.
+Thought ahead, before a test caught it: React StrictMode runs effects twice in dev. Two
+`POST /auth/refresh` with one cookie look like a replay, and my own server would revoke the
+family and sign the user out. So `refresh()` in `web/api.js` keeps one call in flight.
+Sign-out had nowhere to go: the cookie has `Path=/v1/auth/refresh`, so it is only sent there.
+Added `DELETE /auth/refresh`. Without it, a reload after sign-out logs you straight back in.
+The role picker needed the role list without a list in `web/`: added `GET /orgs/:org/roles`.
+The grant checkboxes are the keys of the resolved set, so `device:reboot` shows up too.
+
+### 2026-09-27 · manual check, and a dev-server loop
+
+`npm run dev` restarted 8 times in 6 seconds, so the browser got `ERR_CONNECTION_RESET`.
+Split it: loops only with `--watch` plus Vite; not with `--watch-path` alone, not in
+production. This machine has Node 20; `.nvmrc` says 22. On Node 20, `--watch` still watches
+imported modules even with `--watch-path`. Dropped `--watch`: 0 restarts, and touching a
+server file still restarts once. Commit `755bba9`.
+Then signed in as Sam. Acme (operator): Devices + Sessions, Control on all 5 rows, no
+Terminal, no Audit. Globex (auditor): Audit card present, 0 Control buttons, theme amber.
+Web storage empty in both.
+
 ## Phase 8 - hardening
 
 <!-- What you measured, what you fixed, what you left alone and why. -->
