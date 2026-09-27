@@ -102,6 +102,14 @@ Flipped nav to `'every'` to see what breaks. Both suites still passed, 35/35 and
 So nothing shipped tests the union. The probe does: with `'every'`, 4 nav checks fail,
 including Robin's `device:reboot`.
 
+### 2026-09-27 · context.js
+
+Docs clash: §1 says suspension bumps `pv`, §10 says a suspended token gets 403. Checked
+freshness first, a suspended member would always get 401 TOKEN_STALE. So suspended skips it.
+Wrong prediction: my probe assumed owner has every permission. Failed: owner is `implicit`
+deny on `device:reboot`, which is in no role's baseline. The engine was right; fixed the probe.
+`probe-context.js` 23/23, commit `81d5c13`.
+
 ## Phase 3 - orgs, members, invites
 
 <!-- Anything no document states. Invite lifecycle states. -->
