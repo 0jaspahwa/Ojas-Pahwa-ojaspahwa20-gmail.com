@@ -8,6 +8,7 @@ import { createRoot } from 'react-dom/client';
 import { onSession, refresh } from './api.js';
 import { Login } from './Login.jsx';
 import { Shell } from './Shell.jsx';
+import { Invite } from './Invite.jsx';
 import './styles.css';
 
 function Console({ restore = true, notice }) {
@@ -31,6 +32,12 @@ function App() {
     return m ? { invite: decodeURIComponent(m[1]) } : {};
   });
 
+  if (page.invite) {
+    return <Invite token={page.invite} onAccepted={() => {
+      history.replaceState(null, '', '/');
+      setPage({ notice: 'Your account is ready. Sign in to continue.' });
+    }} />;
+  }
   return <Console restore={!page.notice} notice={page.notice} />;
 }
 

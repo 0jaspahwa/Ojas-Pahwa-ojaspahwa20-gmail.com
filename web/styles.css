@@ -93,3 +93,6 @@ form.panel label { display: flex; gap: 6px; align-items: center; font-size: 13px
 .message.error { background: #fef3f2; color: var(--danger); border: 1px solid #fecdca; }
 .message.info { background: #ecfdf3; color: #067647; border: 1px solid #abefc6; }
 .message code { margin-left: 8px; font-size: 12px; opacity: 0.8; }
+
+.login .panel-box { width: 320px; padding: 28px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; }
+.login form p { margin: 0; font-size: 14px; }
