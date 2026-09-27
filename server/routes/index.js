@@ -5,7 +5,9 @@
 // Every endpoint is in BRIEF.md §5.1; the response shapes the console reads are in §5.2.
 
 import { registerAuthRoutes } from './auth.js';
+import { registerDeviceRoutes } from './devices.js';
 
 export function registerRoutes(router, deps) {
   registerAuthRoutes(router, deps);
+  registerDeviceRoutes(router, deps);
 }

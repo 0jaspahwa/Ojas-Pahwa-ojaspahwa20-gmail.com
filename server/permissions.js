@@ -215,7 +215,12 @@ export function can(db, ctx, permission, deviceId = null) {
 
 // Throws 403 carrying the reason code, so a refusal is debuggable.
 export function assertCan(db, ctx, permission, deviceId = null) {
-  const r = check(db, ctx, permission, deviceId);
+  return assertAllowed({ [permission]: check(db, ctx, permission, deviceId) }, permission);
+}
+
+// Same, against a set that is already resolved (one resolve, several checks).
+export function assertAllowed(set, permission) {
+  const r = set[permission] ?? deny(null, 'unknown_permission');
   if (r.effect === 'allow') return r;
   const reason = r.reason === 'implicit' ? 'missing_permission' : r.reason;
   throw forbidden(`missing ${permission}`, reason);
