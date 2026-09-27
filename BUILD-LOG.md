@@ -306,6 +306,14 @@ with `--watch`, 0 without.
 Left alone, on purpose: see "Deliberately not built" in DECISIONS.md and the open threads
 below. The biggest is the two-tab refresh race.
 
+### 2026-09-27 · clean checkout: Playwright had nothing to serve
+
+Filling the form ("we run it exactly as written"), I ran `npx playwright test` on a fresh clone
+that was never built. Every test timed out after 30 s on an empty page. `dist/` is git-ignored,
+and the test server serves `dist/`. My 30/30 only passed because my folder had an old build.
+Fix: the Playwright web server runs `npm run build` first. Clean clone, no build: 30/30.
+Lesson: "works on my machine" included a build artifact I had forgotten was there.
+
 ## Open threads
 
 - Reviewer has `user:remove` without `user:read`. Not settled yet.
