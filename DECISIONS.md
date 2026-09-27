@@ -86,6 +86,20 @@ normalise on write and add a `CHECK` on the format, so the database enforces it.
 
 ---
 
+### Login without `orgId` lands in the org you joined first
+
+**What I chose:** the active membership with the earliest `joined_at` (tie: org id).
+Same order is used for the `orgs` list in the login, switch and `/auth/me` responses.
+**Why:** no document says. Dana and Sam both joined Acme first, and `check-api.js`
+(`dana is owner in Acme`) and `tests/ui.spec.js` (`sam ... operator in Acme`) expect Acme.
+**What I rejected:** alphabetical by org name. It passes the same tests (Acme < Globex) but
+depends on names, which admins can rename, so the default org could change under a user.
+Also "most recently used": it needs state the schema does not store.
+**What would change my mind:** a test that logs in a user whose first-joined org sorts after
+another by name, and expects the other one.
+
+---
+
 ## Tools used
 
 - Claude drafted `verifyAccessToken` and the permission engine. Claude's review found the

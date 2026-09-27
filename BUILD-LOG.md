@@ -110,6 +110,17 @@ Wrong prediction: my probe assumed owner has every permission. Failed: owner is 
 deny on `device:reboot`, which is in no role's baseline. The engine was right; fixed the probe.
 `probe-context.js` 23/23, commit `81d5c13`.
 
+### 2026-09-27 · login, switch org, me
+
+No document says which org a login lands in. Picked earliest `joined_at` active membership.
+Dana and Sam both joined Acme first, and the tests expect Acme. Alphabetical would pass too,
+so the tests do not settle it.
+Measured: without a dummy scrypt, unknown email took 1.9 ms, wrong password 49.0 ms (median
+of 5). That is an account oracle. With it: 56.4 vs 56.8 ms. `probe-auth.js` 21/21.
+`check-api.js`: `Acme token against Globex -> 404` passes, but only because the devices
+route does not exist yet. Not a real pass until that route is built. `no token -> 401`
+gets 404 for the same reason: the router matches the path before auth runs.
+
 ## Phase 3 - orgs, members, invites
 
 <!-- Anything no document states. Invite lifecycle states. -->
