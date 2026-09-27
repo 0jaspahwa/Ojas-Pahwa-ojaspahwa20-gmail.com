@@ -7,7 +7,7 @@ import { resolve, resolveDevices, assertCan, assertAllowed, assertMayGrant } fro
 import { audit, auditDenials } from '../audit.js';
 import { endActiveSessions } from '../lifecycle.js';
 import { newId, bumpPermVersion } from '../db.js';
-import { send, badRequest, notFound } from '../http.js';
+import { send, badRequest, notFound, forbidden, normalizeTs, HttpError } from '../http.js';
 
 const KINDS = ['macos', 'windows', 'linux', 'android', 'ios'];
 
@@ -144,5 +144,109 @@ export function registerDeviceRoutes(router, { db }) {
       audit(db, { orgId: ctx.orgId, actorId: ctx.userId, requestId: ctx.requestId, ...meta, result: 'allow' });
     })();
     send(res, 200, { id: p.id, orgId: target });
+  });
+
+  // --- grants ------------------------------------------------------------------------
+
+  const listGrants = db.prepare(
+    `SELECT g.id, g.user_id AS userId, g.device_id AS deviceId, g.effect,
+            g.starts_at AS startsAt, g.expires_at AS expiresAt,
+            g.created_by AS createdBy, g.created_at AS createdAt,
+            json_group_array(gp.permission) AS permissions
+       FROM grants g JOIN grant_permissions gp ON gp.grant_id = g.id
+      WHERE g.org_id = ? AND g.revoked_at IS NULL AND (? IS NULL OR g.user_id = ?)
+      GROUP BY g.id ORDER BY g.created_at, g.id`
+  );
+  const liveGrant = db.prepare(
+    'SELECT id, user_id FROM grants WHERE id = ? AND org_id = ? AND revoked_at IS NULL'
+  );
+
+  // Checks run in the order of AUTH-DATA-MODEL §8. The unknown-permission check is
+  // left to the foreign key on grant_permissions, caught below.
+  router.post('/v1/orgs/:org/grants', (ctx, _p, res) => {
+    const b = ctx.body;
+    const meta = { action: 'grant.create', targetType: 'user', targetId: typeof b.userId === 'string' ? b.userId : null };
+
+    const id = auditDenials(db, ctx, meta, () => {
+      assertCan(db, ctx, 'grant:create');
+
+      if (!Array.isArray(b.permissions) || b.permissions.length === 0 || !b.permissions.every((x) => typeof x === 'string')) {
+        throw badRequest('permissions must be a non-empty array of strings');
+      }
+      if (b.effect !== 'allow' && b.effect !== 'deny') throw badRequest('effect must be allow or deny');
+      if (typeof b.userId !== 'string') throw badRequest('userId is required');
+      if (b.deviceId != null && typeof b.deviceId !== 'string') throw badRequest('deviceId must be a string');
+      const deviceId = b.deviceId ?? null;
+      const startsAt = normalizeTs(b.startsAt, 'startsAt');
+      const expiresAt = normalizeTs(b.expiresAt, 'expiresAt');
+
+      if (deviceId !== null && !deviceIn.get(deviceId, ctx.orgId)) throw notFound();
+      if (b.userId === ctx.userId) throw forbidden('you cannot grant to yourself', 'self_grant');
+      if (!activeMember.get(b.userId, ctx.orgId)) throw notFound();
+      if (expiresAt !== null && Date.parse(expiresAt) <= Date.now()) {
+        throw new HttpError(400, 'GRANT_EXPIRED', 'expiresAt must be in the future');
+      }
+      if (startsAt !== null && expiresAt !== null && startsAt >= expiresAt) {
+        throw badRequest('expiresAt must be after startsAt');
+      }
+
+      const patterns = [...new Set(b.permissions)];
+      assertMayGrant(db, ctx, patterns, deviceId);
+
+      const grantId = newId('grt');
+      db.transaction(() => {
+        db.prepare(
+          `INSERT INTO grants (id, org_id, user_id, device_id, effect, starts_at, expires_at, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(grantId, ctx.orgId, b.userId, deviceId, b.effect, startsAt, expiresAt, ctx.userId);
+        const addPattern = db.prepare('INSERT INTO grant_permissions (grant_id, permission) VALUES (?, ?)');
+        for (const pattern of patterns) {
+          try {
+            addPattern.run(grantId, pattern);
+          } catch (err) {
+            // The grant row exists, so the only FK that can fail here is the permission.
+            if (err.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
+              throw badRequest(`unknown permission: ${pattern}`, 'unknown_permission');
+            }
+            throw err;
+          }
+        }
+        bumpPermVersion(db, { orgId: ctx.orgId, userId: b.userId });
+        audit(db, { orgId: ctx.orgId, actorId: ctx.userId, requestId: ctx.requestId, ...meta,
+                    targetType: 'grant', targetId: grantId, result: 'allow' });
+      })();
+      return grantId;
+    });
+
+    const grant = listGrants.all(ctx.orgId, b.userId, b.userId).find((g) => g.id === id);
+    send(res, 201, { ...grant, permissions: JSON.parse(grant.permissions) });
+  });
+
+  router.get('/v1/orgs/:org/grants', (ctx, _p, res) => {
+    auditDenials(db, ctx, { action: 'grant.list', targetType: 'org', targetId: ctx.orgId }, () =>
+      assertCan(db, ctx, 'user:read'));
+    const userId = ctx.query.get('userId');
+    const grants = listGrants.all(ctx.orgId, userId, userId).map((g) => ({ ...g, permissions: JSON.parse(g.permissions) }));
+    send(res, 200, { grants });
+  });
+
+  // Revoking a grant on yourself is refused like a self-grant: dropping your own deny
+  // would widen your own authority.
+  router.delete('/v1/orgs/:org/grants/:id', (ctx, p, res) => {
+    const meta = { action: 'grant.revoke', targetType: 'grant', targetId: p.id };
+    const grant = liveGrant.get(p.id, ctx.orgId);
+    if (!grant) throw notFound();
+
+    auditDenials(db, ctx, meta, () => {
+      assertCan(db, ctx, 'grant:revoke');
+      if (grant.user_id === ctx.userId) throw forbidden('you cannot revoke your own grant', 'self_grant');
+    });
+
+    db.transaction(() => {
+      db.prepare("UPDATE grants SET revoked_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(p.id);
+      bumpPermVersion(db, { orgId: ctx.orgId, userId: grant.user_id });
+      audit(db, { orgId: ctx.orgId, actorId: ctx.userId, requestId: ctx.requestId, ...meta, result: 'allow' });
+    })();
+    send(res, 204);
   });
 }
