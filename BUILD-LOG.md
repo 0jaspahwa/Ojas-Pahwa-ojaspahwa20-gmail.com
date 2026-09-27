@@ -128,6 +128,26 @@ gets 404 for the same reason: the router matches the path before auth runs.
    there and it becomes 200 with Acme's devices, not a 404.
 3. An unknown permission fails the insert with `SQLITE_CONSTRAINT_FOREIGNKEY`.
 
+### 2026-09-27 · results: all three held
+
+1. `GET /devices`: 10 queries with 4 rows, 10 with 104. To check the counter works, I
+   resolved per row on purpose: 26 and 426. So it would catch an N+1.
+2. Org check removed from `context.js`: Acme token on the Globex path got **200**. Put back:
+   404. So the check-api test now passes for the right reason (it was a false pass before).
+3. `device:teleport` gets 400 `unknown_permission`, which only comes from the FK catch. The
+   transaction rolled back: no grant row without permissions.
+
+### 2026-09-27 · devices, grants, refresh: things no document settles
+
+- `GET /devices/:id` without `device:view`: 404, not 403. The list hides the row, so a 403
+  here would confirm the id exists. Still audited, as `not_visible`.
+- Revoking a grant on yourself: 403. Revoking your own deny is a self-grant by another route.
+- Transfer revokes the device's grants. My engine fix only hides them while the device is
+  away. Moved back, they would work again.
+- Decommission ends sessions with `device_transferred`. The schema has no other fit.
+- Refresh: check, then rotate. Safe only because handlers are synchronous in one process.
+- `probe-routes.js` 48/48. `check-api.js`: 16 ok, stops at audit and sessions (not built).
+
 ## Phase 3 - orgs, members, invites
 
 <!-- Anything no document states. Invite lifecycle states. -->
@@ -155,3 +175,7 @@ gets 404 for the same reason: the router matches the path before auth runs.
 ## Open threads
 
 - Reviewer has `user:remove` without `user:read`. Not settled yet.
+- Refresh from two tabs at once: the second looks like a replay and logs the user out.
+- A transfer writes one audit row, in the old org. The new org's log does not show it.
+- `GET /grants` lists grants on devices the reader may not be able to view (leaks the id).
+- `POST /devices` checks `device:provision` at org level ('any'): one device's grant is enough.
