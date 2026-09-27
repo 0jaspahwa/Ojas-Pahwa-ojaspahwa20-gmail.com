@@ -87,6 +87,11 @@ export function registerOrgRoutes(router, { db }) {
     send(res, 204);
   });
 
+  // The role catalogue, for pickers. Read from the table, so the console has no list of its own.
+  router.get('/v1/orgs/:org/roles', (_ctx, _p, res) => {
+    send(res, 200, { roles: db.prepare('SELECT key, label, rank FROM roles ORDER BY rank DESC').all() });
+  });
+
   // --- members ----------------------------------------------------------------------
 
   router.get('/v1/orgs/:org/members', (ctx, _p, res) => {

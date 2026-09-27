@@ -17,6 +17,9 @@ import { send, badRequest, unauthenticated, notFound, forbidden } from '../http.
 const DUMMY_HASH = hashPassword(randomUUID());
 const BAD_LOGIN = 'wrong email or password';
 
+const refreshCookie = (req) => (req.headers.cookie ?? '').split(';').map((c) => c.trim())
+  .find((c) => c.startsWith('refresh_token='))?.slice('refresh_token='.length) || null;
+
 export function registerAuthRoutes(router, { db, secret }) {
   const userByEmail = db.prepare('SELECT id, email, name, password_hash FROM users WHERE email = ?');
   const userById = db.prepare('SELECT id, email, name FROM users WHERE id = ?');
@@ -103,8 +106,7 @@ export function registerAuthRoutes(router, { db, secret }) {
   // whole family is revoked and everyone holding it must log in again.
   // Check-then-rotate cannot interleave: handlers are synchronous in one process.
   router.post('/v1/auth/refresh', (ctx, _p, res) => {
-    const raw = (ctx.req.headers.cookie ?? '').split(';').map((c) => c.trim())
-      .find((c) => c.startsWith('refresh_token='))?.slice('refresh_token='.length);
+    const raw = refreshCookie(ctx.req);
     if (!raw) throw unauthenticated('missing refresh token');
 
     const row = refreshByHash.get(hashRefreshToken(raw));
@@ -122,6 +124,15 @@ export function registerAuthRoutes(router, { db, secret }) {
       setRefreshCookie(res, row.user_id, row.family_id);
     })();
     send(res, 200, withToken(row.user_id, target, membership));
+  });
+
+  // Sign out: revoke the cookie's whole family and clear the cookie. Lives on the refresh
+  // path because the cookie is only sent there (Path=/v1/auth/refresh).
+  router.delete('/v1/auth/refresh', (ctx, _p, res) => {
+    const row = refreshByHash.get(hashRefreshToken(refreshCookie(ctx.req) ?? ''));
+    if (row) revokeFamily.run(row.family_id);
+    res.setHeader('set-cookie', 'refresh_token=; HttpOnly; Secure; SameSite=Strict; Path=/v1/auth/refresh; Max-Age=0');
+    send(res, 204);
   });
 
   // Switch org: a new token scoped to another org you are an active member of.
